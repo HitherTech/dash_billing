@@ -26,6 +26,7 @@ import os
 import logging
 import json
 import settings
+import math
 from datetime import datetime
 
 os.environ['DJANGO_SETTINGS_MODULE'] = 'dashboard.settings'
@@ -53,7 +54,7 @@ LOG = logging.getLogger('django_openstack.cron')
 
 #TODO fix this later(nati)
 TENANT = '1'
-USER = os.environ['NOVA_USERNAME'] 
+USER = os.environ['NOVA_USERNAME']
 PASSWORD = os.environ['NOVA_PASSWORD']
 
 class FakeRequest:
@@ -64,8 +65,14 @@ LOG = logging.getLogger('billing.manager')
 FLAGS = flags.FLAGS
 
 class PriceList:
-    CREATE_INSTANCE = -100
-    ACTIVE_INSTANCE = -1
+    def base_instance_price(self, cpus, memory):
+        return cpus*1 + math.floor(memory/(1024*2))
+
+    def active_instance_price(self, cpus, memory):
+        return self.base_instance_price(cpus, memory)
+
+    def create_instance_price(self):
+        return 100
 
 class BillingManager(manager.Manager):
     def __init__(self, *args, **kwargs):
@@ -77,6 +84,8 @@ class BillingManager(manager.Manager):
                 self.token.serviceCatalog
         )
         self.request = FakeRequest(self.user)
+        self.price_list = PriceList()
+
 
     def periodic_tasks(self, context=None):
         self._add_record_for_active_instance()
@@ -92,17 +101,17 @@ class BillingManager(manager.Manager):
             messages.error(request, 'Unable to get instance list: %s' % e.message)
         for instance in instances:
             if instance.status == 'ACTIVE':
-                self._add_record(instance.attrs.tenant_id, PriceList.ACTIVE_INSTANCE, 'instance %s is running at %s' % (instance.id,now))
+                self._add_record(instance.attrs.tenant_id, self.price_list.active_instance_price(instance.attrs.vcpus, instance.attrs.memory_mb), 'instance %s is running at %s' % (instance.id,now))
 
     def _check_tenant_all_bill(self):
         tenants = api.tenant_list(self.request)
         LOG.debug("Checking tenant bill")
-        #TODO (nati) This code is slow. FIX this later 
+        #TODO (nati) This code is slow. FIX this later
         for tenant in tenants:
            self._check_tenant_bill(tenant.id)
-   
+
     def _check_tenant_bill(self,tenant_id):
-	balance = AccountRecord.objects.filter(tenant_id=tenant_id).aggregate(Sum('amount'))['amount__sum']
+        balance = AccountRecord.objects.filter(tenant_id=tenant_id).aggregate(Sum('amount'))['amount__sum']
         if not balance:
             balance = 0
         api.admin_api(self.request).quota_sets.update(tenant_id, instances=-int(balance/PriceList.CREATE_INSTANCE))
@@ -113,7 +122,7 @@ class BillingManager(manager.Manager):
         self._check_tenant_bill(tenant_id)
 
     def compute_instance_create(self, message):
-        self._add_record(message['payload']['project_id'], PriceList.CREATE_INSTANCE, 'create instance')
+        self._add_record(message['payload']['project_id'], self.price_list.create_instance_price(), 'create instance')
 
     def notify(self, message, context=None):
         event_type = message['event_type'].replace('.','_')
@@ -122,7 +131,7 @@ class BillingManager(manager.Manager):
             method(message)
         LOG.debug(json.dumps(message))
 
-	tenant_id = 0
+        tenant_id = 0
         user_id = 0
         request_id = 0
         try:
@@ -149,13 +158,13 @@ class BillingManager(manager.Manager):
             user_id = message['payload']['context']['user_id']
         except:
             pass
-   	
-	if not tenant_id:
-		tenant_id = 0
 
-	if not user_id:
-		user_id = 0
- 
+        if not tenant_id:
+            tenant_id = 0
+
+        if not user_id:
+            user_id = 0
+
         eventlog = EventLog(event_type=message['event_type'],
                             priority=message['priority'],
                             message_id=message['message_id'],
