@@ -115,6 +115,8 @@ def index(request):
     return shortcuts.render_to_response(template_file,
     {'account_record_list':records, 'delete_form': delete_form}, context_instance=template.RequestContext(request))
 
+@login_required
+@enforce_admin_access
 def eventlog(request):
     tenant_id = request.session['tenant_id']
     eventlog_list = EventLog.objects.order_by('created').reverse()
@@ -193,22 +195,23 @@ def create(request):
             'form': form,
         }, context_instance=template.RequestContext(request))
 
-  
+@login_required
+@enforce_admin_access
 def create_user_with_bill(request):
     if request.method == "POST":
         form = CreateNewUserWithBill(request.POST)
         if form.is_valid():
             data = form.clean()
             # TODO Make this a real request
-	    try:
-               	LOG.info('Creating tenant with name "%s"' % data['id'])
-               	new_tenant = api.tenant_create(request,
-			data['id'],
-			"Tenant",
-	               	True)
-		messages.success(request,
-			'tenant %s was successfully created.'
-			% data['id'])
+            try:
+                LOG.info('Creating tenant with name "%s"' % data['id'])
+                new_tenant = api.tenant_create(request,
+                            data['id'],
+                            "Tenant",
+                            True)
+                messages.success(request,
+                    'tenant %s was successfully created.'
+                    % data['id'])
 
                 LOG.info('Creating user with name "%s"' % data['id'])
                 new_user = api.user_create(request,
@@ -236,7 +239,7 @@ def create_user_with_bill(request):
                 LOG.info(msg)
                 messages.success(request, msg)
                 msg = """
-	        Please send following messege to the user:
+                Please send following messege to the user:
                 Your freecloud account is succesfully created.
                 Url:https://www.thefreecloud.org
                 Username: %s
@@ -246,7 +249,7 @@ def create_user_with_bill(request):
                 """ % ( data['id'],data['password'],data['amount'])
                 messages.success(request,msg)
                 return shortcuts.redirect('syspanel_create_user_with_bill')
-            
+
             except api_exceptions.ApiException, e:
                 LOG.exception('ApiException while creating a record\n'
                           '%r' % data)
@@ -266,4 +269,4 @@ def create_user_with_bill(request):
         'syspanel_create_user_with_bill.html', {
             'form': form,
         }, context_instance=template.RequestContext(request))
- 
+

@@ -69,10 +69,10 @@ class PriceList:
         return cpus*1 + math.floor(memory/(1024*2))
 
     def active_instance_price(self, cpus, memory):
-        return self.base_instance_price(cpus, memory)
+        return - self.base_instance_price(cpus, memory)
 
     def create_instance_price(self):
-        return 100
+        return - 100
 
 class BillingManager(manager.Manager):
     def __init__(self, *args, **kwargs):
@@ -114,7 +114,7 @@ class BillingManager(manager.Manager):
         balance = AccountRecord.objects.filter(tenant_id=tenant_id).aggregate(Sum('amount'))['amount__sum']
         if not balance:
             balance = 0
-        api.admin_api(self.request).quota_sets.update(tenant_id, instances=-int(balance/PriceList.CREATE_INSTANCE))
+        api.admin_api(self.request).quota_sets.update(tenant_id, instances=-int(balance/self.price_list.create_instance_price()))
 
     def _add_record(self, tenant_id, amount, memo):
         accountRecord = AccountRecord(tenant_id=tenant_id, amount=amount, memo=memo)

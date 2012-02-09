@@ -21,3 +21,5 @@ dash_billing/syspanel/models.py
 dash_billing/syspanel/tests.py
 dash_billing/syspanel/urls.py
 dash_billing/syspanel/views.py
+dash_billing/test/__init__.py
+dash_billing/test/test_manager.py
